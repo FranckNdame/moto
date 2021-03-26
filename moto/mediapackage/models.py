@@ -190,7 +190,6 @@ class MediaPackageBackend(BaseBackend):
         origin_endpoint.whitelist = whitelist
         return origin_endpoint
 
-
 mediapackage_backends = {}
 for region in Session().get_available_regions("mediapackage"):
     mediapackage_backends[region] = MediaPackageBackend(region)

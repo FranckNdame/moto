@@ -56,7 +56,6 @@ def _create_origin_endpoint_config(**kwargs):
 def test_create_channel_succeeds():
     client = boto3.client("mediapackage", region_name=region)
     channel_config = _create_channel_config()
-
     response = client.create_channel(**channel_config)
     response["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
     response["Arn"].should.equal(
