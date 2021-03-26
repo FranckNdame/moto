@@ -10,11 +10,12 @@ region = "eu-west-1"
 @mock_mediastore
 def test_create_channel_succeeds():
     client = boto3.client("mediastore", region_name=region)
-    response = client.create_container(name="Awesome container!", tags={"Customer": "moto"})
+    response = client.create_container(ContainerName="Awesome container!", Tags=[{"Key": "customer"}])
+    print(response)
     response["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
     response["Arn"].should.equal(
          "arn:aws:mediastore:container:{}".format(response["Name"])
     )
     response["Name"].should.equal("Awesome container!")
     response["Status"].should.equal("ACTIVE")
-    response["Tags"]["Customer"].should.equal("moto")
+    response["Tags"][0]["Key"].should.equal("customer")

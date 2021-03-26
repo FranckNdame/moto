@@ -14,5 +14,4 @@ class MediaStoreResponse(BaseResponse):
         name = self._get_param("name")
         tags = self._get_param("tags")
         container = self.mediastore_backend.create_container(name, tags)
-        )
         return json.dumps(container.to_dict())
