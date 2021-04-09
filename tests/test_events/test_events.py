@@ -14,6 +14,7 @@ from moto import mock_logs
 from moto.core import ACCOUNT_ID
 from moto.core.utils import iso_8601_datetime_without_milliseconds
 from moto.events import mock_events
+from moto.events.models import EventPattern
 
 RULES = [
     {"Name": "test1", "ScheduleExpression": "rate(5 minutes)"},
@@ -398,6 +399,35 @@ def test_put_targets_error_unknown_rule():
     ex.response["Error"]["Code"].should.contain("ResourceNotFoundException")
     ex.response["Error"]["Message"].should.equal(
         "Rule unknown does not exist on EventBus default."
+    )
+
+
+@mock_events
+def test_put_targets_error_missing_parameter_sqs_fifo():
+    # given
+    client = boto3.client("events", "eu-central-1")
+
+    # when
+    with pytest.raises(ClientError) as e:
+        client.put_targets(
+            Rule="unknown",
+            Targets=[
+                {
+                    "Id": "sqs-fifo",
+                    "Arn": "arn:aws:sqs:eu-central-1:{}:test-queue.fifo".format(
+                        ACCOUNT_ID
+                    ),
+                }
+            ],
+        )
+
+    # then
+    ex = e.value
+    ex.operation_name.should.equal("PutTargets")
+    ex.response["ResponseMetadata"]["HTTPStatusCode"].should.equal(400)
+    ex.response["Error"]["Code"].should.contain("ValidationException")
+    ex.response["Error"]["Message"].should.equal(
+        "Parameter(s) SqsParameters must be specified for target: sqs-fifo."
     )
 
 
@@ -1488,57 +1518,86 @@ def test_archive_event_with_bus_arn():
     response["SizeBytes"].should.be.greater_than(0)
 
 
-@mock_events
-def test_event_not_routed_to_archive_when_detail_does_not_match_pattern():
-    # given
-    client = boto3.client("events", "eu-central-1")
-    event_bus_arn = "arn:aws:events:eu-central-1:{}:event-bus/default".format(
-        ACCOUNT_ID
-    )
-    client.create_archive(
-        ArchiveName="archive-with-dict-filter",
-        EventSourceArn=event_bus_arn,
-        EventPattern=json.dumps({"detail": {"foo": ["bar"]}}),
-    )
-    client.create_archive(
-        ArchiveName="archive-with-list-filter",
-        EventSourceArn=event_bus_arn,
-        EventPattern=json.dumps({"source": ["foo", "bar"]}),
-    )
+def test_archive_with_allowed_values_event_filter():
+    pattern = EventPattern(json.dumps({"source": ["foo", "bar"]}))
+    assert pattern.matches_event({"source": "foo"})
+    assert pattern.matches_event({"source": "bar"})
+    assert not pattern.matches_event({"source": "baz"})
 
-    # when
-    event_matching_detail = {
-        "Source": "source",
-        "DetailType": "type",
-        "Detail": '{"foo": "bar"}',
-    }
-    event_not_matching_detail = {
-        "Source": "source",
-        "DetailType": "type",
-        "Detail": '{"foo": "baz"}',
-    }
-    event_matching_source_foo = {"Source": "foo", "DetailType": "type", "Detail": "{}"}
-    event_matching_source_bar = {"Source": "bar", "DetailType": "type", "Detail": "{}"}
-    event_not_matching_source = {"Source": "baz", "DetailType": "type", "Detail": "{}"}
 
-    client.put_events(
-        Entries=[
-            event_matching_detail,
-            event_not_matching_detail,
-            event_matching_source_foo,
-            event_matching_source_bar,
-            event_not_matching_source,
-        ]
+def test_archive_with_nested_event_filter():
+    pattern = EventPattern(json.dumps({"detail": {"foo": ["bar"]}}))
+    assert pattern.matches_event({"detail": {"foo": "bar"}})
+    assert not pattern.matches_event({"detail": {"foo": "baz"}})
+
+
+def test_archive_with_exists_event_filter():
+    foo_exists = EventPattern(json.dumps({"detail": {"foo": [{"exists": True}]}}))
+    assert foo_exists.matches_event({"detail": {"foo": "bar"}})
+    assert not foo_exists.matches_event({"detail": {}})
+
+    foo_not_exists = EventPattern(json.dumps({"detail": {"foo": [{"exists": False}]}}))
+    assert not foo_not_exists.matches_event({"detail": {"foo": "bar"}})
+    assert foo_not_exists.matches_event({"detail": {}})
+
+    bar_exists = EventPattern(json.dumps({"detail": {"bar": [{"exists": True}]}}))
+    assert not bar_exists.matches_event({"detail": {"foo": "bar"}})
+    assert not bar_exists.matches_event({"detail": {}})
+
+    bar_not_exists = EventPattern(json.dumps({"detail": {"bar": [{"exists": False}]}}))
+    assert bar_not_exists.matches_event({"detail": {"foo": "bar"}})
+    assert bar_not_exists.matches_event({"detail": {}})
+
+
+def test_archive_with_prefix_event_filter():
+    pattern = EventPattern(json.dumps({"detail": {"foo": [{"prefix": "bar"}]}}))
+    assert pattern.matches_event({"detail": {"foo": "bar"}})
+    assert pattern.matches_event({"detail": {"foo": "bar!"}})
+    assert not pattern.matches_event({"detail": {"foo": "ba"}})
+
+
+@pytest.mark.parametrize(
+    "operator, compare_to, should_match, should_not_match",
+    [
+        ("<", 1, [0], [1, 2]),
+        ("<=", 1, [0, 1], [2]),
+        ("=", 1, [1], [0, 2]),
+        (">", 1, [2], [0, 1]),
+        (">=", 1, [1, 2], [0]),
+    ],
+)
+def test_archive_with_single_numeric_event_filter(
+    operator, compare_to, should_match, should_not_match
+):
+    pattern = EventPattern(
+        json.dumps({"detail": {"foo": [{"numeric": [operator, compare_to]}]}})
     )
+    for number in should_match:
+        assert pattern.matches_event({"detail": {"foo": number}})
+    for number in should_not_match:
+        assert not pattern.matches_event({"detail": {"foo": number}})
 
-    # then
-    response = client.describe_archive(ArchiveName="archive-with-dict-filter")
-    response["EventCount"].should.equal(1)
-    response["SizeBytes"].should.be.greater_than(0)
 
-    response = client.describe_archive(ArchiveName="archive-with-list-filter")
-    response["EventCount"].should.equal(2)
-    response["SizeBytes"].should.be.greater_than(0)
+def test_archive_with_multi_numeric_event_filter():
+    events = [{"detail": {"foo": number}} for number in range(5)]
+
+    one_or_two = EventPattern(
+        json.dumps({"detail": {"foo": [{"numeric": [">=", 1, "<", 3]}]}})
+    )
+    assert not one_or_two.matches_event(events[0])
+    assert one_or_two.matches_event(events[1])
+    assert one_or_two.matches_event(events[2])
+    assert not one_or_two.matches_event(events[3])
+    assert not one_or_two.matches_event(events[4])
+
+    two_or_three = EventPattern(
+        json.dumps({"detail": {"foo": [{"numeric": [">", 1, "<=", 3]}]}})
+    )
+    assert not two_or_three.matches_event(events[0])
+    assert not two_or_three.matches_event(events[1])
+    assert two_or_three.matches_event(events[2])
+    assert two_or_three.matches_event(events[3])
+    assert not two_or_three.matches_event(events[4])
 
 
 @mock_events
