@@ -51,9 +51,9 @@ def _create_flow_config(name, **kwargs):
 @mock_mediaconnect
 def test_create_flow_succeeds():
     client = boto3.client("mediaconnect", region_name=region)
-    channel_config = _create_flow_config("test Flow 1")
+    flow_config = _create_flow_config("test Flow 1")
 
-    response = client.create_flow(**channel_config)
+    response = client.create_flow(**flow_config)
 
     response["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
     response["Flow"]["FlowArn"][:26].should.equal("arn:aws:mediaconnect:flow:")
@@ -90,9 +90,9 @@ def test_list_flows_succeeds():
 @mock_mediaconnect
 def test_describe_flow_succeeds():
     client = boto3.client("mediaconnect", region_name=region)
-    channel_config = _create_flow_config("test Flow 1")
+    flow_config = _create_flow_config("test Flow 1")
 
-    create_response = client.create_flow(**channel_config)
+    create_response = client.create_flow(**flow_config)
     create_response["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
     flow_arn = create_response["Flow"]["FlowArn"]
     describe_response = client.describe_flow(FlowArn=flow_arn)
@@ -103,9 +103,9 @@ def test_describe_flow_succeeds():
 @mock_mediaconnect
 def test_delete_flow_succeeds():
     client = boto3.client("mediaconnect", region_name=region)
-    channel_config = _create_flow_config("test Flow 1")
+    flow_config = _create_flow_config("test Flow 1")
 
-    create_response = client.create_flow(**channel_config)
+    create_response = client.create_flow(**flow_config)
     create_response["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
     flow_arn = create_response["Flow"]["FlowArn"]
     delete_response = client.delete_flow(FlowArn=flow_arn)
@@ -117,9 +117,9 @@ def test_delete_flow_succeeds():
 @mock_mediaconnect
 def test_start_stop_flow_succeeds():
     client = boto3.client("mediaconnect", region_name=region)
-    channel_config = _create_flow_config("test Flow 1")
+    flow_config = _create_flow_config("test Flow 1")
 
-    create_response = client.create_flow(**channel_config)
+    create_response = client.create_flow(**flow_config)
     create_response["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
     create_response["Flow"]["Status"].should.equal("STANDBY")
     flow_arn = create_response["Flow"]["FlowArn"]
@@ -153,3 +153,66 @@ def test_tag_resource_succeeds():
     list_response = client.list_tags_for_resource(ResourceArn="some-arn")
     list_response["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
     list_response["Tags"].should.equal({"Tag1": "Value1"})
+
+@mock_mediaconnect
+def test_add_flow_outputs_succeeds():
+    client = boto3.client("mediaconnect", region_name=region)
+
+    flow_config = _create_flow_config("test-flow")
+    flow = client.create_flow(**flow_config)
+    flow["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
+    flow_arn =flow["Flow"]["FlowArn"]
+    flow["Flow"]["Outputs"].should.equal([{'Name': 'Output 1'}])
+    response = client.add_flow_outputs(
+        FlowArn=flow_arn,
+        Outputs=[{"Name":"Output 2", "Protocol": "zixi-push"}]
+    )
+    response["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
+    response["Outputs"].should.equal([{'Name': 'Output 1'}, {'Name': 'Output 2'}])
+    response = client.remove_flow_output(
+        FlowArn=flow_arn,
+        OutputArn=response["Outputs"]["OutputArn"]
+    )
+    response["Outputs"].should.equal([{'Name': 'Output 1'}])
+    # response["Outputs"].should.equal([{'Name': 'Output 1', 'Protocol': 'zixi-push'}, {'Name': 'Output 2', 'Protocol': 'zixi-push'}])
+
+# @mock_mediaconnect
+# def test_remove_flow_outputs_succeeds():
+#     client = boto3.client("mediaconnect", region_name=region)
+
+#     flow_config = _create_flow_config("test-flow")
+#     flow = client.create_flow(**flow_config)
+#     response["Outputs"].should.equal([{'Name': 'Output 1'}
+
+@mock_mediaconnect
+def test_update_flow_output_succeeds():
+    client = boto3.client("mediaconnect", region_name=region)
+
+    flow_config = _create_flow_config("test-flow")
+    flow = client.create_flow(**flow_config)
+    flow["ResponseMetadata"]["HTTPStatusCode"].should.equal(200)
+    flow_arn =flow["Flow"]["FlowArn"]
+    print(flow)
+    print (flow["Flow"]["Outputs"])
+    output_arn = flow["Flow"]["Outputs"]["OutputArn"]
+    output["Name"].should.equal('Output 1')
+    flow["Flow"]["Outputs"]["Name"].should.equal('Output 1')
+
+    response = client.update_flow_output(
+        CidrAllowList=["allow-list"],
+        Description="output-description",
+        Destination="output-destination",
+        Encryption={"Url":"url"},
+        FlowArn=flow_arn,
+        MaxLatency=123,
+        OutputArn=output_arn,
+        Port=123,
+        Protocol="rtp-fec",
+        RemoteId="remote-id",
+        SmoothingLatency=123,
+        StreamId="stream-id",
+        VpcInterfaceAttachment={'VpcInterfaceName': 'vpc-interface-name'},  
+    )
+
+    print(response)
+    print(res)

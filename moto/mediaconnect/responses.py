@@ -81,3 +81,54 @@ class MediaConnectResponse(BaseResponse):
             resource_arn=resource_arn,
         )
         return json.dumps(dict(tags=tags))
+    
+    def add_flow_outputs(self):
+        flow_arn = unquote(self._get_param("flowArn"))
+        outputs = self._get_param("outputs")
+        flow_arn, outputs = self.mediaconnect_backend.add_flow_outputs(
+            flow_arn=flow_arn,
+            new_outputs=outputs,
+        )
+        return json.dumps(dict(flowArn=flow_arn, outputs=outputs))
+        
+    
+    def remove_flow_output(self):
+        flow_arn = self._get_param("flowArn")
+        output_arn = self._get_param("outputArn")
+        flow_arn, output_arn = self.mediaconnect_backend.remove_flow_output(
+            flow_arn=flow_arn,
+            output_arn=output_arn,
+        )
+        return json.dumps(dict(flowArn=flow_arn, outputArn=output_arn))
+    
+    def update_flow_output(self):
+        cidr_allow_list = self._get_list_prefix("CidrAllowList.member")
+        description = self._get_param("Description")
+        destination = self._get_param("Destination")
+        encryption = self._get_param("Encryption")
+        flow_arn = self._get_param("FlowArn")
+        max_latency = self._get_int_param("MaxLatency")
+        output_arn = self._get_param("OutputArn")
+        port = self._get_int_param("Port")
+        protocol = self._get_param("Protocol")
+        remote_id = self._get_param("RemoteId")
+        smoothing_latency = self._get_int_param("SmoothingLatency")
+        stream_id = self._get_param("StreamId")
+        vpc_interface_attachment = self._get_param("VpcInterfaceAttachment")
+        flow_arn, output = self.mediaconnect_backend.update_flow_output(
+            cidr_allow_list=cidr_allow_list,
+            description=description,
+            destination=destination,
+            encryption=encryption,
+            flow_arn=flow_arn,
+            max_latency=max_latency,
+            output_arn=output_arn,
+            port=port,
+            protocol=protocol,
+            remote_id=remote_id,
+            smoothing_latency=smoothing_latency,
+            stream_id=stream_id,
+            vpc_interface_attachment=vpc_interface_attachment,
+        )
+        # TODO: adjust response
+        return json.dumps(dict(flowArn=flow_arn, output=output))

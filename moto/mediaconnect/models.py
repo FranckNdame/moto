@@ -58,7 +58,7 @@ class Flow(BaseModel):
         if self.status in ["UPDATING"]:
             self.status = self._previous_status
             self._previous_status = None
-
+    
 
 class Resource(BaseModel):
     def __init__(self, *args, **kwargs):
@@ -185,6 +185,59 @@ class MediaConnectBackend(BaseBackend):
             raise NotFoundException(message="Resource not found.")
         return resource.tags
 
+    def add_flow_outputs(self, flow_arn, new_outputs):
+        if flow_arn in self._flows:
+            flow = self._flows[flow_arn]
+            outputs = flow.outputs
+            outputs.extend(new_outputs)
+        else:
+            raise NotFoundException(message="Flow not found.")
+        return flow_arn, outputs
+    
+    def remove_flow_output(self, flow_arn, output_arn):
+        if flow_arn in self._flows:
+            flow = self._flows[flow_arn]
+            outputs = flow.outputs
+            del outputs.output_arn
+        else:
+            raise NotFoundException(message="Flow not found.")
+        return flow_arn, output_arn
+    
+    def update_flow_output(
+        self, 
+        cidr_allow_list, 
+        description, 
+        destination, 
+        encryption, 
+        flow_arn, 
+        max_latency, 
+        output_arn, 
+        port, 
+        protocol, 
+        remote_id, 
+        smoothing_latency, 
+        stream_id, 
+        vpc_interface_attachment
+    ):
+        if flow_arn in self._flows:
+            flow = self._flows[flow_arn]
+            output = flow.outputs[output_arn]
+            output.cidr_allow_list = cidr_allow_list
+            output.description = description
+            output.destination = destination
+            output.encryption = encryption
+            output.flow_arn = flow_arn
+            output.max_latency = max_latency
+            output.port = port
+            output.protocol = protocol
+            output.remote_id = remote_id
+            output.smoothing_latency = smoothing_latency
+            output.stream_if = stream_id
+            output.vpc_interface_attachment = vpc_interface_attachment
+        else:
+            raise NotFoundException(message="Flow not found.")
+        return flow_arn, output
+    
     # add methods from here
 
 
